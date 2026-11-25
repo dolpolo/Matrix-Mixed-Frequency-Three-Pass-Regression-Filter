@@ -124,14 +124,6 @@ build_result_filename_dfm <- function(path_out,
       "_Size-", Size,
       "_sel-", sel,
       "_Idio-", idio_spec,
-      "_cc-", paste(countries, collapse = "-"),
-      "_Nm-", N_m,
-      "_Nq-", N_q,
-      "_r-", r,
-      "_p-", p,
-      "_q-", q,
-      "_CovidM-", covid_m,
-      "_CovidQ-", covid_q,
       stamp,
       ".",
       ext
@@ -345,22 +337,22 @@ dir.create(path_graph_all, recursive = TRUE, showWarnings = FALSE)
 
 file_graph_full <- file.path(
   path_graph_all,
-  paste0("plot_full_", model_name, "_", tag_run, ".png")
+  paste0("plot_full_", model_name, "_", params$idio_spec, ".png")
 )
 
 file_graph_rt <- file.path(
   path_graph_all,
-  paste0("plot_rt_", model_name, "_", tag_run, ".png")
+  paste0("plot_rt_", model_name, "_", params$idio_spec, ".png")
 )
 
 file_tex_insample <- file.path(
   path_graph_all,
-  paste0("tab_insample_", model_name, "_", tag_run, ".tex")
+  paste0("tab_insample_", model_name, "_", params$idio_spec, ".tex")
 )
 
 file_tex_rt <- file.path(
   path_graph_all,
-  paste0("tab_rt_", model_name, "_", tag_run, ".tex")
+  paste0("tab_rt_", model_name, "_", params$idio_spec, ".tex")
 )
 
 ggsave(

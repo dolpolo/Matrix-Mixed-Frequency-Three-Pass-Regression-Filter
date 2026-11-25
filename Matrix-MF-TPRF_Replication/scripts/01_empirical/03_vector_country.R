@@ -255,7 +255,6 @@ file_graph_full <- file.path(
     model_name,
     "_Size-", Size,
     "_sel-", sel,
-    "_", tag_run,
     ".png"
   )
 )
@@ -267,7 +266,6 @@ file_graph_rt <- file.path(
     model_name,
     "_Size-", Size,
     "_sel-", sel,
-    "_", tag_run,
     ".png"
   )
 )
@@ -335,7 +333,7 @@ file_summary_cross <- build_result_filename(
   covid_q          = as.integer(isTRUE(params$covid_mask_q)),
   ext              = "rds",
   timestamp        = FALSE,
-  include_details  = TRUE
+  include_details  = FALSE
 )
 
 if (file.exists(file_summary_cross)) file.remove(file_summary_cross)

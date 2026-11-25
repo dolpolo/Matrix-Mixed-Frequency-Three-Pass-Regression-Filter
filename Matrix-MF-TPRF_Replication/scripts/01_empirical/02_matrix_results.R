@@ -1923,9 +1923,6 @@ file_graph_rt_full <- file.path(
     model_name,
     "_Size-", Size,
     "_sel-", sel,
-    "_Lproxy-", Lproxy_rt,
-    "_Lmidas-", Lmidas_rt,
-    "_pAR-", pAR_rt,
     "_", format(params_rt$start_eval, "%Y-%m"),
     "_to_", format(params_rt$end_eval, "%Y-%m"),
     ".png"

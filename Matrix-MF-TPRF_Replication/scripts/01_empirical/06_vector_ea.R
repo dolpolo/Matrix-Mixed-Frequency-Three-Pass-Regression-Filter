@@ -288,7 +288,7 @@ file_fit <- build_result_filename(
   covid_q          = as.integer(isTRUE(params$covid_mask_q)),
   ext              = "rds",
   timestamp        = TRUE,
-  include_details  = TRUE
+  include_details  = FALSE
 )
 
 saveRDS(
@@ -424,7 +424,7 @@ file_rt <- build_result_filename(
   covid_q          = as.integer(isTRUE(params$covid_mask_q)),
   ext              = "rds",
   timestamp        = TRUE,
-  include_details  = TRUE
+  include_details  = FALSE
 )
 
 saveRDS(
