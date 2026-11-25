@@ -1,0 +1,674 @@
+# Author: Davide Delfino
+# Input: data/, config/settings.R, and functions in R/.
+# Output: results/; see README.md.
+# Original: TPRF_Models_EA/VecTensor_MF-TPRF/all_vectorized.mf.tprf.main.R
+
+# ==============================================================================
+# Vectorized-from-Tensor MF-TPRF Main Script
+# ------------------------------------------------------------------------------
+# This script:
+#   1. Prepares country data and builds the tensor
+#   2. Vectorizes the tensor into a mixed-frequency panel
+#   3. Runs MF-TPRF for all countries on tensor-vectorized data
+#   4. Builds cross-country plots and RMSFE tables
+#   5. Builds additional real-time plot variants
+#   6. Saves all outputs in a consistent format
+# ==============================================================================
+
+# ==============================================================================
+# 0. PATHS
+# ==============================================================================
+
+path_main <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+# Run from the project root (see README.md).
+
+path_data_raw <- file.path(path_main, "data/raw")
+path_data_adj <- file.path(path_main, "data/transformed")
+
+path_func_mat <- file.path(path_main, "R/matrix")
+path_func_vec <- file.path(path_main, "R/vector")
+
+path_results_vec <- file.path(path_main, "results/empirical/pooled")
+path_graph_vec   <- file.path(path_main, "results/empirical/pooled/figures")
+path_graph_rt    <- file.path(path_main, "results/empirical/pooled/figures_rt")
+
+dir.create(path_results_vec, recursive = TRUE, showWarnings = FALSE)
+dir.create(path_graph_vec,   recursive = TRUE, showWarnings = FALSE)
+dir.create(path_graph_rt,    recursive = TRUE, showWarnings = FALSE)
+
+
+if (!file.exists("data/information_set/selected_variables_50.csv")) {
+  stop("Missing fixed input: data/information_set/selected_variables_50.csv")
+}
+
+# ==============================================================================
+# 1. PACKAGES
+# ==============================================================================
+
+library(tidyverse)
+library(lubridate)
+library(abind)
+library(zoo)
+library(MASS)
+library(tseries)
+library(fBasics)
+library(vars)
+library(glmnet)
+library(plsdof)
+library(sandwich)
+library(lmtest)
+library(car)
+library(readxl)
+library(conflicted)
+library(future)
+library(future.apply)
+library(progressr)
+handlers(global = TRUE)
+handlers("txtprogressbar")
+
+
+n_workers <- max(1L, min(2L, parallel::detectCores() - 1L))
+future::plan(future::multisession, workers = n_workers)
+
+conflict_prefer("select", "dplyr", quiet = TRUE)
+conflict_prefer("filter", "dplyr", quiet = TRUE)
+
+# ==============================================================================
+# 2. SOURCE MATRIX FUNCTIONS
+# Build tensor before loading vector functions with overlapping names
+# ==============================================================================
+
+source(file.path(path_func_mat, "matrix.mf.tprf.utils.R"))
+source(file.path(path_func_mat, "matrix.mf.tprf.prep.R"))
+source("R/common/fixed_selection.R")
+
+# ==============================================================================
+# 3. LOCAL HELPERS
+# ==============================================================================
+
+build_run_tag <- function(params) {
+  paste0(
+    "eval-", format(params$start_eval, "%Y%m"), "_", format(params$end_eval, "%Y%m"),
+    "_sel-", params$sel_method,
+    "_Nm-", params$n_m,
+    "_Nq-", params$n_q,
+    "_KmaxVec-", params$Kmax_vec,
+    "_Zmax-", params$Zmax,
+    "_Lmax-", params$Lmax,
+    "_pARmax-", params$p_AR_max,
+    "_CovidM-", as.integer(isTRUE(params$covid_mask_m)),
+    "_CovidQ-", as.integer(isTRUE(params$covid_mask_q))
+  )
+}
+
+list_to_df_nowcast <- function(lst, tag) {
+  if (length(lst) == 0L) {
+    return(data.frame(
+      date             = as.Date(character()),
+      nowcast          = numeric(),
+      month_in_quarter = character()
+    ))
+  }
+  
+  data.frame(
+    date             = as.Date(names(lst)),
+    nowcast          = as.numeric(unlist(lst)),
+    month_in_quarter = tag,
+    row.names        = NULL
+  )
+}
+
+# ==============================================================================
+# 4. USER PARAMETERS
+# ==============================================================================
+
+params <- list(
+  start_est    = as.Date("2000-04-01"),
+  start_eval   = as.Date("2017-01-01"),
+  end_eval     = as.Date("2026-02-01"),
+  covid_start  = as.Date("2020-03-01"),
+  covid_end    = as.Date("2021-07-01"),
+  covid_mask_m = TRUE,
+  covid_mask_q = TRUE,
+  target       = "GDP",
+  target_cc    = "EA",
+  
+  sel_method = "fixed",
+  n_m          = 25,
+  n_q          = 15,
+  thr_m        = 0.10,
+  thr_q        = 0.85,
+  thr_F_test   = 0.01,
+  alpha_lasso  = 1,
+  
+  Kmax         = c(3, 4),
+  Kmax_vec     = 15,
+  Zmax         = 5,
+  
+  p_AR_max     = 5,
+  Lmax         = 5,
+  Robust_F     = FALSE,
+  alpha        = 0.10,
+  robust_type  = "NW",
+  nw_lag       = 1
+)
+
+countries <- c("DE", "FR", "IT", "ES", "NL", "BE", "AT", "PT", "EA")
+country   <- "IT"
+
+tag_run    <- build_run_tag(params)
+model_name <- "vectensor"
+Size <- "fixed50"
+sel        <- params$sel_method
+
+path_cache <- file.path(path_results_vec, "_cache")
+cache_tag <- paste0(
+  "sel-", params$sel_method,
+  "_Nm-", params$n_m,
+  "_Nq-", params$n_q,
+  "_eval-", format(params$start_eval, "%Y%m"), "_", format(params$end_eval, "%Y%m"),
+  "_covidM-", as.integer(params$covid_mask_m),
+  "_covidQ-", as.integer(params$covid_mask_q)
+)
+dir.create(path_cache, recursive = TRUE, showWarnings = FALSE)
+
+# ==============================================================================
+# 5. BUILD CACHE
+# ==============================================================================
+
+build_or_load_tensor_cache <- function(cache_file, countries, params, path_raw, path_adj,
+                                       selection_end, var_scope = "union",
+                                       cache_tag = NA_character_) {
+  
+  if (file.exists(cache_file)) {
+    cat("\nLoading cached tensor:\n", cache_file, "\n")
+    return(readRDS(cache_file))
+  }
+  
+  cat("\nBuilding tensor and saving cache:\n", cache_file, "\n")
+  
+  all_countries_obj <- prepare_all_countries(
+    countries     = countries,
+    params        = params,
+    path_raw      = path_raw,
+    path_adj      = path_adj,
+    covid_mask_m  = params$covid_mask_m,
+    covid_mask_q  = params$covid_mask_q,
+    selection_end = selection_end
+  )
+  
+  tensor_obj <- build_tensor(all_countries_obj, params, var_scope = var_scope)
+  
+  data_obj <- tensor_to_vector(
+    X_tens = tensor_obj$Y,
+    N_m    = tensor_obj$n_M,
+    N_q    = tensor_obj$n_Q
+  )
+  
+  out <- list(
+    all_countries = all_countries_obj,
+    tensor        = tensor_obj,
+    data          = data_obj,
+    selection_end = selection_end,
+    var_scope     = var_scope,
+    cache_tag     = cache_tag
+  )
+  
+  saveRDS(out, cache_file)
+  out
+}
+# ==============================================================================
+# 6. PREPARE DATA AND BUILD TENSOR
+# ==============================================================================
+
+selection_end_full <- params$end_eval
+selection_end_pre  <- params$start_eval %m-% months(1)
+selection_end_post <- params$covid_end
+
+cache_full <- file.path(path_cache, paste0("vectensor_full_", cache_tag, ".rds"))
+cache_pre  <- file.path(path_cache, paste0("vectensor_pre_",  cache_tag, ".rds"))
+cache_post <- file.path(path_cache, paste0("vectensor_post_", cache_tag, ".rds"))
+
+obj_full <- build_or_load_tensor_cache(
+  cache_file    = cache_full,
+  countries     = countries,
+  params        = params,
+  path_raw      = path_data_raw,
+  path_adj      = path_data_adj,
+  selection_end = selection_end_full,
+  var_scope     = "union"
+)
+
+obj_pre <- build_or_load_tensor_cache(
+  cache_file    = cache_pre,
+  countries     = countries,
+  params        = params,
+  path_raw      = path_data_raw,
+  path_adj      = path_data_adj,
+  selection_end = selection_end_pre,
+  var_scope     = "union"
+)
+
+obj_post <- build_or_load_tensor_cache(
+  cache_file    = cache_post,
+  countries     = countries,
+  params        = params,
+  path_raw      = path_data_raw,
+  path_adj      = path_data_adj,
+  selection_end = selection_end_post,
+  var_scope     = "union"
+)
+
+all_countries <- obj_full$all_countries
+tensor        <- obj_full$tensor
+data          <- obj_full$data
+
+all_countries_rt_pre <- obj_pre$all_countries
+tensor_pre           <- obj_pre$tensor
+data_pre             <- obj_pre$data
+
+all_countries_rt_post <- obj_post$all_countries
+tensor_post           <- obj_post$tensor
+data_post             <- obj_post$data
+
+# ==============================================================================
+# 6. SOURCE VECTOR FUNCTIONS
+# ==============================================================================
+
+source(file.path(path_func_vec, "mf.tprf.utils.R"))
+source(file.path(path_func_vec, "mf.tprf.prep.R"))
+source(file.path(path_func_vec, "mf.tprf.imp.R"))
+source(file.path(path_func_vec, "mf.tprf.fs.R"))
+source(file.path(path_func_vec, "mf.tprf.R"))
+source(file.path(path_func_vec, "mf.tprf.now.R"))
+source(file.path(path_func_vec, "mf.tprf.all_cc_results.R"))
+
+
+# ==============================================================================
+# 7. CROSS-COUNTRY PIPELINE
+# ==============================================================================
+
+results_all <- run_all_countries_mf_tprf_from_tensor(
+  countries          = countries,
+  tensor             = tensor,
+  data               = data,
+  tensor_pre         = tensor_pre,
+  data_pre           = data_pre,
+  tensor_post        = tensor_post,
+  data_post          = data_post,
+  selection_end_pre  = selection_end_pre,
+  selection_end_post = selection_end_post,
+  params             = params,
+  path_results       = path_results_vec,
+  parallel           = TRUE
+)
+
+summary_all <- lapply(names(results_all), function(cc) {
+  res <- results_all[[cc]]
+  
+  summarize_mf_tprf_country(
+    MF_TPRF_res = res$full_sample,
+    RT_res      = res$pseudo_realtime,
+    country     = cc,
+    dates_m     = res$inputs$dates_m,
+    dates_q     = res$inputs$dates_q,
+    y_q         = res$inputs$y_q,
+    params      = res$params
+  )
+})
+names(summary_all) <- names(results_all)
+
+cross_out <- build_cross_country_outputs(
+  summary_all = summary_all,
+  params      = params,
+  model_label = "VEC-P MF-TPRF"
+)
+
+# ==============================================================================
+# 7. LOAD PREVIOUSLY SAVED SUMMARY
+# ==============================================================================
+
+# file_summary_cross <- build_result_filename(
+#   path_out         = path_results_vec,
+#   model            = model_name,
+#   stage            = "summary",
+#   Size             = Size,
+#   sel              = sel,
+#   countries        = setdiff(countries, params$target_cc),
+#   N_m              = params$n_m,
+#   N_q              = params$n_q,
+#   Lproxy           = NA,
+#   L_midas          = NA,
+#   p_ar             = NA,
+#   r1               = NA,
+#   r2               = NA,
+#   robust_f         = as.integer(isTRUE(params$Robust_F)),
+#   covid_m          = as.integer(isTRUE(params$covid_mask_m)),
+#   covid_q          = as.integer(isTRUE(params$covid_mask_q)),
+#   ext              = "rds",
+#   timestamp        = FALSE,
+#   include_details  = TRUE
+# )
+
+# summary_cross <- readRDS(file_summary_cross)
+
+# cross_out <- list(
+#  hyper_full_all         = summary_cross$hyper_full_all,
+#  hyper_rt_pre_all       = summary_cross$hyper_rt_pre_all,
+#  hyper_rt_post_all      = summary_cross$hyper_rt_post_all,
+#  df_now_full_all        = summary_cross$df_now_full_all,
+#  df_quarterly_all       = summary_cross$df_quarterly_all,
+#  plot_nowcast_facet     = summary_cross$plot_nowcast_facet,
+#  tab_insample_all       = summary_cross$tab_insample_all,
+#  latex_tab_insample_all = summary_cross$latex_tab_insample_all,
+#  df_rt_all              = summary_cross$df_rt_all,
+#  df_yq_eval_all         = summary_cross$df_yq_eval_all,
+#  plot_rt_facet          = summary_cross$plot_rt_facet,
+#  tab_rt_all             = summary_cross$tab_rt_all,
+#  latex_tab_rt_all       = summary_cross$latex_tab_rt_all
+#)
+
+# rt_plot_variants <- summary_cross$rt_plot_variants
+# rt_plot_files    <- summary_cross$rt_plot_files
+
+# graph_titles <- summary_cross$graph_titles
+
+# missing_by_country <- if (!is.null(summary_cross$missing_by_country)) {
+#  summary_cross$missing_by_country
+#} else {
+#  NULL
+#}
+
+# ==============================================================================
+# 7B. REAL-TIME PLOT VARIANTS
+# ==============================================================================
+
+# summary_cross <- readRDS(file_summary_cross)
+
+rt_plot_variants <- build_rt_plot_variants(
+  df_rt_all      = cross_out$df_rt_all,
+  df_yq_eval_all = cross_out$df_yq_eval_all,
+  params         = params,
+  model_label    = "VEC-P MF-TPRF"
+)
+
+rt_plot_files <- save_rt_plot_variants(
+  rt_plots      = rt_plot_variants,
+  path_graph_rt = path_graph_rt,
+  model_name    = model_name,
+  Size          = Size,
+  sel           = sel
+)
+
+# ==============================================================================
+# 8. GRAPH TITLE REGISTER
+# ==============================================================================
+
+graph_titles <- list(
+  main_full_sample = list(
+    monthly_nowcasts_vs_gdp = list(
+      title    = "Monthly nowcasts and observed GDP",
+      subtitle = NULL
+    )
+  ),
+  realtime = list(
+    full_facet = list(
+      title    = "Rolling real-time nowcasts",
+      subtitle = "Quarterly targets and monthly nowcast updates"
+    ),
+    big4 = list(
+      title    = "Rolling real-time nowcasts: DE, FR, IT, ES",
+      subtitle = NULL
+    ),
+    other = list(
+      title    = "Rolling real-time nowcasts: NL, BE, AT, PT",
+      subtitle = NULL
+    ),
+    by_country = lapply(names(rt_plot_variants$plot_by_country), function(cc) {
+      list(
+        title    = paste("Rolling real-time nowcasts:", cc),
+        subtitle = NULL
+      )
+    }),
+    post_covid_8 = list(
+      title    = "Post-COVID rolling real-time nowcasts",
+      subtitle = paste0(
+        "Sample: ",
+        format(
+          min(
+            cross_out$df_rt_all$date[
+              cross_out$df_rt_all$country %in% c("DE", "FR", "IT", "ES", "NL", "BE", "AT", "PT") &
+                cross_out$df_rt_all$date > params$covid_end
+            ],
+            na.rm = TRUE
+          ),
+          "%b %Y"
+        ),
+        "–",
+        format(
+          max(
+            cross_out$df_rt_all$date[
+              cross_out$df_rt_all$country %in% c("DE", "FR", "IT", "ES", "NL", "BE", "AT", "PT") &
+                cross_out$df_rt_all$date > params$covid_end
+            ],
+            na.rm = TRUE
+          ),
+          "%b %Y"
+        )
+      )
+    )
+  )
+)
+
+names(graph_titles$realtime$by_country) <- names(rt_plot_variants$plot_by_country)
+
+if (!is.null(rt_plot_variants$plot_post_big4)) {
+  graph_titles$realtime$post_covid_big4 <- list(
+    title    = "Post-COVID rolling real-time nowcasts: DE, FR, IT, ES",
+    subtitle = NULL
+  )
+}
+
+if (!is.null(rt_plot_variants$plot_post_other4)) {
+  graph_titles$realtime$post_covid_other4 <- list(
+    title    = "Post-COVID rolling real-time nowcasts: NL, BE, AT, PT",
+    subtitle = NULL
+  )
+}
+
+# ==============================================================================
+# 9. CROSS-COUNTRY OUTPUTS
+# ==============================================================================
+
+print(cross_out$plot_nowcast_facet)
+print(cross_out$plot_rt_facet)
+
+print(rt_plot_variants$plot_all)
+print(rt_plot_variants$plot_big4)
+print(rt_plot_variants$plot_other4)
+print(rt_plot_variants$plot_post8)
+
+if (!is.null(rt_plot_variants$plot_post_big4)) {
+  print(rt_plot_variants$plot_post_big4)
+}
+
+if (!is.null(rt_plot_variants$plot_post_other4)) {
+  print(rt_plot_variants$plot_post_other4)
+}
+
+if (!is.null(rt_plot_variants$plot_by_country) && length(rt_plot_variants$plot_by_country) > 0L) {
+  invisible(lapply(rt_plot_variants$plot_by_country, print))
+}
+
+cat(cross_out$latex_tab_insample_all)
+cat(cross_out$latex_tab_rt_all)
+
+missing_by_country <- data.frame(
+  country   = names(results_all),
+  n_missing = sapply(names(results_all), function(cc) sum(is.na(results_all[[cc]]$inputs$X))),
+  n_total   = sapply(names(results_all), function(cc) length(results_all[[cc]]$inputs$X))
+) %>%
+  mutate(pct_missing = 100 * n_missing / n_total) %>%
+  arrange(desc(pct_missing))
+
+print(missing_by_country)
+
+# ==============================================================================
+# 10. SAVE CROSS-COUNTRY OUTPUTS
+# ==============================================================================
+
+path_graph_all <- file.path(path_graph_vec, "ALL_COUNTRIES")
+dir.create(path_graph_all, recursive = TRUE, showWarnings = FALSE)
+
+file_graph_full <- file.path(
+  path_graph_all,
+  paste0(
+    "plot_full_",
+    model_name,
+    "_Size-", Size,
+    "_sel-", sel,
+    "_", tag_run,
+    ".png"
+  )
+)
+
+file_graph_rt <- file.path(
+  path_graph_all,
+  paste0(
+    "plot_rt_",
+    model_name,
+    "_Size-", Size,
+    "_sel-", sel,
+    "_", tag_run,
+    ".png"
+  )
+)
+
+file_tex_insample <- file.path(
+  path_graph_all,
+  paste0(
+    "tab_insample_",
+    model_name,
+    "_Size-", Size,
+    "_sel-", sel,
+    ".tex"
+  )
+)
+
+file_tex_rt <- file.path(
+  path_graph_all,
+  paste0(
+    "tab_rt_",
+    model_name,
+    "_Size-", Size,
+    "_sel-", sel,
+    ".tex"
+  )
+)
+
+ggsave(file_graph_full, cross_out$plot_nowcast_facet, width = 14, height = 8, dpi = 300)
+ggsave(file_graph_rt,   cross_out$plot_rt_facet,      width = 14, height = 8, dpi = 300)
+
+writeLines(cross_out$latex_tab_insample_all, con = file_tex_insample)
+writeLines(cross_out$latex_tab_rt_all,       con = file_tex_rt)
+
+# ==============================================================================
+# 11. SAVE SUMMARY OBJECT
+# ==============================================================================
+
+file_summary_cross <- build_result_filename(
+  path_out         = path_results_vec,
+  model            = model_name,
+  stage            = "summary",
+  Size             = Size,
+  sel              = sel,
+  countries        = names(results_all),
+  N_m              = params$n_m,
+  N_q              = params$n_q,
+  Lproxy           = NA,
+  L_midas          = NA,
+  p_ar             = NA,
+  r1               = NA,
+  r2               = NA,
+  robust_f         = as.integer(isTRUE(params$Robust_F)),
+  covid_m          = as.integer(isTRUE(params$covid_mask_m)),
+  covid_q          = as.integer(isTRUE(params$covid_mask_q)),
+  ext              = "rds",
+  timestamp        = FALSE,
+  include_details  = TRUE
+)
+
+if (file.exists(file_summary_cross)) file.remove(file_summary_cross)
+
+saveRDS(
+  list(
+    model_id               = "MF_TPRF_VECFROMTENSOR",
+    model                  = model_name,
+    stage                  = "cross_country",
+    Size                   = Size,
+    sel                    = sel,
+    params                 = params,
+    countries              = names(results_all),
+    tag_run                = tag_run,
+    missing_by_country     = missing_by_country,
+    
+    graph_titles           = graph_titles,
+    
+    hyper_by_country       = lapply(summary_all, function(x) list(
+      full = x$hyper_full,
+      rt   = x$hyper_rt
+    )),
+    hyper_full_all         = cross_out$hyper_full_all,
+    hyper_rt_pre_all       = cross_out$hyper_rt_pre_all,
+    hyper_rt_post_all      = cross_out$hyper_rt_post_all,
+    
+    df_now_full_all        = cross_out$df_now_full_all,
+    df_quarterly_all       = cross_out$df_quarterly_all,
+    plot_nowcast_facet     = cross_out$plot_nowcast_facet,
+    tab_insample_all       = cross_out$tab_insample_all,
+    latex_tab_insample_all = cross_out$latex_tab_insample_all,
+    
+    df_rt_all              = cross_out$df_rt_all,
+    df_yq_eval_all         = cross_out$df_yq_eval_all,
+    plot_rt_facet          = cross_out$plot_rt_facet,
+    tab_rt_all             = cross_out$tab_rt_all,
+    latex_tab_rt_all       = cross_out$latex_tab_rt_all,
+    
+    rt_plot_variants       = rt_plot_variants,
+    rt_plot_files          = rt_plot_files,
+    
+    file_graph_full        = file_graph_full,
+    file_graph_rt          = file_graph_rt,
+    file_tex_insample      = file_tex_insample,
+    file_tex_rt            = file_tex_rt
+  ),
+  file = file_summary_cross
+)
+
+cat("\nSaved cross-country summary to:\n", file_summary_cross, "\n")
+cat("\nSaved cross-country outputs to:\n")
+cat(file_graph_full, "\n")
+cat(file_graph_rt, "\n")
+cat(file_tex_insample, "\n")
+cat(file_tex_rt, "\n")
+
+cat("\nSaved additional real-time plot variants to:\n")
+cat(rt_plot_files$file_graph_rt_all, "\n")
+cat(rt_plot_files$file_graph_rt_big4, "\n")
+cat(rt_plot_files$file_graph_rt_other4, "\n")
+cat(rt_plot_files$file_graph_rt_post8, "\n")
+
+if (!is.null(rt_plot_files$file_graph_rt_post_big4)) {
+  cat(rt_plot_files$file_graph_rt_post_big4, "\n")
+}
+if (!is.null(rt_plot_files$file_graph_rt_post_other4)) {
+  cat(rt_plot_files$file_graph_rt_post_other4, "\n")
+}
+if (!is.null(rt_plot_files$file_graph_rt_by_country) && length(rt_plot_files$file_graph_rt_by_country) > 0L) {
+  for (cc in names(rt_plot_files$file_graph_rt_by_country)) {
+    cat(rt_plot_files$file_graph_rt_by_country[[cc]], "\n")
+  }
+}
+
+future::plan(future::sequential)
+

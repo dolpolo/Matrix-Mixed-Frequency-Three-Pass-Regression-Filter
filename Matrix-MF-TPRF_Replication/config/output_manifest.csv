@@ -1,0 +1,51 @@
+category,path,script,inputs,required
+main.figure,results/paper/main/figures/figure_02_matrix_vs_vector_loading_maps.pdf,scripts/03_outputs/02_loading_wald.R,loading Monte Carlo RDS/figure,True
+main.figure,results/paper/main/figures/figure_02_matrix_vs_vector_loading_maps.png,scripts/03_outputs/02_loading_wald.R,loading Monte Carlo RDS/figure,True
+main.table,results/paper/main/tables/table_2_empirical.tex,scripts/03_outputs/01_empirical_comparison.R,summary RDS of all four models,True
+main.table,results/paper/main/tables/table_row_wald_single_restrictions.tex,scripts/03_outputs/02_loading_wald.R,Matrix row Wald tests,True
+appendix.figure,results/paper/appendix/figures/figure_04_baseline_matrix_factor.pdf,scripts/03_outputs/04_matrix_factor.R,Matrix scalar fit RDS,True
+appendix.figure,results/paper/appendix/figures/figure_04_baseline_matrix_factor.png,scripts/03_outputs/04_matrix_factor.R,Matrix scalar fit RDS,True
+appendix.figure,results/paper/appendix/figures/column_loadings.pdf,scripts/03_outputs/04_matrix_factor.R,Matrix scalar fit RDS,True
+appendix.figure,results/paper/appendix/figures/column_loadings.png,scripts/03_outputs/04_matrix_factor.R,Matrix scalar fit RDS,True
+appendix.figure,results/paper/appendix/figures/loading_map.pdf,scripts/03_outputs/04_matrix_factor.R,Matrix scalar fit RDS,True
+appendix.figure,results/paper/appendix/figures/loading_map.png,scripts/03_outputs/04_matrix_factor.R,Matrix scalar fit RDS,True
+appendix.figure,results/paper/appendix/figures/figure_06_ea_yoy_factor_comparison.pdf,scripts/03_outputs/05_ea_factor.R,Matrix and VEC-C EA fit RDS,True
+appendix.figure,results/paper/appendix/figures/figure_06_ea_yoy_factor_comparison.png,scripts/03_outputs/05_ea_factor.R,Matrix and VEC-C EA fit RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_DE.pdf,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_DE.png,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_FR.pdf,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_FR.png,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_IT.pdf,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_IT.png,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_ES.pdf,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_ES.png,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_NL.pdf,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_NL.png,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_BE.pdf,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_BE.png,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_AT.pdf,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_AT.png,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_PT.pdf,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_07_country_PT.png,scripts/03_outputs/07_country_nowcasts.R,Country summary RDS,True
+appendix.figure,results/paper/appendix/figures/figure_08_postcovid_country_nowcasts_4x2.pdf,scripts/03_outputs/07_country_nowcasts.R,Country/EA saved summaries,True
+appendix.figure,results/paper/appendix/figures/figure_ea_nowcasts_matrix_vecc.pdf,scripts/03_outputs/10_ea_nowcasts.R,Country/EA saved summaries,True
+appendix.figure,results/paper/appendix/figures/figure_08_postcovid_country_nowcasts_4x2.png,scripts/03_outputs/07_country_nowcasts.R,Country/EA saved summaries,True
+appendix.figure,results/paper/appendix/figures/figure_ea_nowcasts_matrix_vecc.png,scripts/03_outputs/10_ea_nowcasts.R,Country/EA saved summaries,True
+appendix.table,results/paper/appendix/tables/row_loadings_vertical.tex,scripts/03_outputs/04_matrix_factor.R,RDS/data,True
+appendix.table,results/paper/appendix/tables/ea_factor_fit_yoy.tex,scripts/03_outputs/05_ea_factor.R,RDS/data,True
+appendix.table,results/paper/appendix/tables/information_set.tex,scripts/03_outputs/03_predictor_panel.R,RDS/data,True
+appendix.table,results/paper/appendix/tables/realtime_missingness.tex,scripts/03_outputs/03_predictor_panel.R,RDS/data,True
+appendix.table,results/paper/appendix/tables/table_dfm_relative_rmsfe.tex,scripts/03_outputs/06_dfm_comparison.R,RDS/data,True
+appendix.table,results/paper/appendix/tables/table_unit_target_comparison.tex,scripts/03_outputs/08_proxy_design.R,RDS/data,True
+appendix.table,results/paper/appendix/tables/table_country_rmsfe_wins.tex,scripts/03_outputs/09_forecast_wins.R,RDS/data,True
+appendix.table,results/paper/appendix/tables/table_forecast_win_summary.tex,scripts/03_outputs/09_forecast_wins.R,RDS/data,True
+appendix.table,results/paper/appendix/tables/table_forecast_win_country.tex,scripts/03_outputs/09_forecast_wins.R,RDS/data,True
+appendix.table,results/paper/appendix/tables/table_ea_rmsfe_matrix_vecc.tex,scripts/03_outputs/10_ea_nowcasts.R,RDS/data,True
+diagnostic,results/diagnostics/asymptotic_normality/row_loadings/histogram_standardized_error.pdf,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
+diagnostic,results/diagnostics/asymptotic_normality/row_loadings/histogram_standardized_error.png,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
+diagnostic,results/diagnostics/asymptotic_normality/row_loadings/qqplot_standardized_error.pdf,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
+diagnostic,results/diagnostics/asymptotic_normality/row_loadings/qqplot_standardized_error.png,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
+diagnostic,results/diagnostics/asymptotic_normality/column_loadings/histogram_standardized_error.pdf,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
+diagnostic,results/diagnostics/asymptotic_normality/column_loadings/histogram_standardized_error.png,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
+diagnostic,results/diagnostics/asymptotic_normality/column_loadings/qqplot_standardized_error.pdf,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
+diagnostic,results/diagnostics/asymptotic_normality/column_loadings/qqplot_standardized_error.png,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
