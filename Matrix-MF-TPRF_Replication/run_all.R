@@ -37,6 +37,7 @@
 #   loading      Perform the loading structure analysis.
 #   an           Run the asymptotic normality diagnostics.
 #   forecast_mc  Run the forecasting Monte Carlo simulations.
+#   benchmark    Measure Matrix, VEC-P and DFM in an isolated workspace.
 #
 # Note:         Forecasting Monte Carlo simulations are computationally
 #               intensive and are excluded from the default replication.
@@ -68,7 +69,8 @@ valid_modes <- c(
   "outputs",
   "loading",
   "an",
-  "forecast_mc"
+  "forecast_mc",
+  "benchmark"
 )
 
 # Check the selected execution mode
@@ -76,7 +78,7 @@ valid_modes <- c(
 if (length(args) > 1L || !mode %in% valid_modes) {
   stop(
     "Usage: Rscript run_all.R ",
-    "[full|check|empirical|outputs|loading|an|forecast_mc]"
+    "[full|check|empirical|outputs|loading|an|forecast_mc|benchmark]"
   )
 }
 
@@ -90,6 +92,9 @@ if (!file.exists("config/settings.R")) {
 # ==============================================================================
 # 2. R EXECUTION ENVIRONMENT
 # ==============================================================================
+
+# Load the timing utilities (no estimation or data download).
+source("R/common/computational_cost.R")
 
 # Locate the Rscript executable according to the operating system
 
@@ -113,18 +118,39 @@ if (!file.exists(rscript)) {
 # Execute each component in a separate R session.
 # Stop the replication if a component fails.
 
+# Collect timings only during a complete three-model comparison.
+timing_directory <- NULL
+timing_workers <- NULL
+
+if (mode %in% c("full", "empirical", "benchmark")) {
+  timing_workers <- computational_worker_budget()
+  timing_directory <- tempfile("mf_timing_")
+  dir.create(timing_directory, recursive = TRUE)
+  timing_directory <- normalizePath(timing_directory, winslash = "/")
+}
+
 run_component <- function(component) {
   
   message("\n========== ", toupper(component), " ==========")
   
   # Execute the selected component
   
-  exit_code <- system2(
-    command = rscript,
-    args    = c("--vanilla", "run_model.R", component),
-    stdout  = "",
-    stderr  = ""
-  )
+  launch <- function() {
+    system2(
+      command = rscript,
+      args    = c("--vanilla", "run_model.R", component),
+      stdout  = "",
+      stderr  = ""
+    )
+  }
+
+  if (!is.null(timing_directory) && component %in% computational_components) {
+    exit_code <- with_computational_environment(
+      timing_directory, timing_workers, launch()
+    )
+  } else {
+    exit_code <- launch()
+  }
   
   # Check whether the execution was successful
   
@@ -182,6 +208,9 @@ if (mode %in% c("full", "empirical")) {
   # --------------------------------------------------------------------------
   
   run_component("dfm")
+
+  # All three timings were collected during the normal empirical run.
+  collect_computational_records(timing_directory)
   
   
   # --------------------------------------------------------------------------
@@ -229,10 +258,48 @@ if (mode == "forecast_mc") {
 
 
 # ==============================================================================
-# 9. PAPER TABLES AND FIGURES
+# 9. INDEPENDENT COMPUTATIONAL BENCHMARK
+# ==============================================================================
+
+# Re-estimate only the three timed models in a temporary copy of the inputs
+# and source code. Existing empirical RDS files and figures are not touched.
+run_isolated_benchmark <- function() {
+  original_root <- getwd()
+  workspace <- tempfile("mf_bench_")
+  dir.create(workspace, recursive = TRUE)
+  on.exit({
+    setwd(original_root)
+    unlink(workspace, recursive = TRUE)
+  }, add = TRUE)
+
+  inputs <- c("R", "scripts", "config", "data", "run_model.R")
+  copied <- file.copy(inputs, workspace, recursive = TRUE, copy.mode = TRUE)
+  if (!all(copied)) stop("Could not create the isolated benchmark workspace.")
+
+  setwd(workspace)
+  for (component in computational_components) {
+    run_component(component)
+  }
+  setwd(original_root)
+
+  collect_computational_records(timing_directory)
+  run_component("computational_cost")
+}
+
+if (mode == "benchmark") {
+  run_isolated_benchmark()
+}
+
+
+# ==============================================================================
+# 10. PAPER TABLES AND FIGURES
 # ==============================================================================
 
 if (mode %in% c("full", "outputs")) {
+
+  if (!file.exists(computational_records_file)) {
+    stop("Computational timings are missing. Run: Rscript run_all.R benchmark")
+  }
   
   # Generate the empirical tables and figures
   
@@ -254,7 +321,11 @@ if (mode %in% c("full", "outputs")) {
 
 
 # ==============================================================================
-# 10. END OF REPLICATION
+# 11. END OF REPLICATION
 # ==============================================================================
+
+if (!is.null(timing_directory)) {
+  unlink(timing_directory, recursive = TRUE)
+}
 
 message("\nReplication completed: ", mode)
