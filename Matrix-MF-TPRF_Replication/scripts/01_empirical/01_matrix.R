@@ -92,6 +92,7 @@ conflict_prefer("filter", "dplyr", quiet = TRUE)
 source(file.path(path_func, "matrix.mf.tprf.utils.R"))
 source(file.path(path_func, "matrix.mf.tprf.prep.R"))
 source("R/common/fixed_selection.R")
+source("R/common/computational_cost.R", local = TRUE)
 source(file.path(path_func, "matrix.mf.tprf.imp.R"))
 source(file.path(path_func, "matrix.mf.tprf.fs.R"))
 source(file.path(path_func, "matrix.mf.tprf.R"))
@@ -266,6 +267,10 @@ Class <- cbind(
 # ==============================================================================
 # 6. STANDARDIZATION, IMPUTATION, AND QUARTERLY AGGREGATION
 # ==============================================================================
+
+# Start timing the baseline full-sample estimation (including tuning).
+benchmark_matrix <- computational_active() && proxy_mode == "scalar"
+benchmark_full_start <- computational_clock()
 
 out_std <- standardize_mat_with_na(X)
 X_std   <- out_std$X_scaled
@@ -540,6 +545,8 @@ saveRDS(
 
 cat("\nSaved full-sample results to:\n", file_fit, "\n")
 
+benchmark_full_elapsed <- computational_clock() - benchmark_full_start
+
 
 # ==============================================================================
 # 11. REAL-TIME DATA
@@ -620,6 +627,8 @@ na_pct_rt_post <- nan_percent_Y(regime_data_post$X_full)
 # ==============================================================================
 # 12. PSEUDO REAL-TIME NOWCASTING
 # ==============================================================================
+
+benchmark_rt_start <- computational_clock()
 
 roll_tensor <- pseudo_realtime_tensor_mf_tprf_fixed_hyper(
   X_full       = regime_data_pre$X_full,
@@ -825,6 +834,23 @@ saveRDS(
 )
 
 cat("\nSaved pseudo real-time results to:\n", file_rt, "\n")
+
+benchmark_rt_elapsed <- computational_clock() - benchmark_rt_start
+
+# Record only the baseline model, excluding the fixed-rank appendix fit.
+if (benchmark_matrix) {
+  computational_record(
+    model            = "matrix",
+    elapsed          = benchmark_full_elapsed + benchmark_rt_elapsed,
+    workers          = 1L,
+    phases           = c(full_sample = benchmark_full_elapsed,
+                         realtime_with_tuning = benchmark_rt_elapsed),
+    start_eval       = params$start_eval,
+    end_eval         = params$end_eval,
+    targets          = colnames(y_q_all),
+    predictor_counts = c(rows = dim(X)[2], columns = dim(X)[3])
+  )
+}
 
 
 

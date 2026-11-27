@@ -49,3 +49,4 @@ diagnostic,results/diagnostics/asymptotic_normality/column_loadings/histogram_st
 diagnostic,results/diagnostics/asymptotic_normality/column_loadings/histogram_standardized_error.png,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
 diagnostic,results/diagnostics/asymptotic_normality/column_loadings/qqplot_standardized_error.pdf,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
 diagnostic,results/diagnostics/asymptotic_normality/column_loadings/qqplot_standardized_error.png,scripts/04_diagnostics/01_an_diagnostics.R,"AN Monte Carlo saved output, or rerun",True
+appendix.table,results/paper/appendix/tables/table_computational_cost.tex,scripts/03_outputs/11_computational_cost.R,recorded elapsed times,True

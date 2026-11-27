@@ -67,8 +67,13 @@ handlers(global = TRUE)
 handlers("txtprogressbar")
 
 
-n_workers <- max(1L, min(2L, parallel::detectCores() - 1L))
+# Use the same worker budget for both vector benchmarks.
+source("R/common/computational_cost.R", local = TRUE)
+n_workers <- computational_workers()
+benchmark_worker_start <- computational_clock()
 future::plan(future::multisession, workers = n_workers)
+benchmark_worker_elapsed <- computational_clock() - benchmark_worker_start
+benchmark_workers_used <- as.integer(future::nbrOfWorkers())
 
 conflict_prefer("select", "dplyr", quiet = TRUE)
 conflict_prefer("filter", "dplyr", quiet = TRUE)
@@ -288,6 +293,8 @@ source(file.path(path_func_vec, "mf.tprf.all_cc_results.R"))
 # 7. CROSS-COUNTRY PIPELINE
 # ==============================================================================
 
+benchmark_estimation_start <- computational_clock()
+
 results_all <- run_all_countries_mf_tprf_from_tensor(
   countries          = countries,
   tensor             = tensor,
@@ -302,6 +309,29 @@ results_all <- run_all_countries_mf_tprf_from_tensor(
   path_results       = path_results_vec,
   parallel           = TRUE
 )
+
+benchmark_estimation_elapsed <- computational_clock() - benchmark_estimation_start
+
+# The cross-country call includes full-sample estimation, calibration,
+# rolling nowcasts and worker-level result serialization, but no plotting.
+if (computational_active()) {
+  computational_record(
+    model            = "vecp",
+    elapsed          = benchmark_worker_elapsed + benchmark_estimation_elapsed,
+    workers          = benchmark_workers_used,
+    phases           = c(worker_setup = benchmark_worker_elapsed,
+                         cross_country = benchmark_estimation_elapsed),
+    start_eval       = params$start_eval,
+    end_eval         = params$end_eval,
+    targets          = names(results_all),
+    predictor_counts = vapply(results_all, function(x) {
+      as.integer(x$inputs$N)
+    }, integer(1)),
+    end_by_target    = vapply(results_all, function(x) {
+      as.character(x$params$end_eval_rt)
+    }, character(1))
+  )
+}
 
 summary_all <- lapply(names(results_all), function(cc) {
   res <- results_all[[cc]]

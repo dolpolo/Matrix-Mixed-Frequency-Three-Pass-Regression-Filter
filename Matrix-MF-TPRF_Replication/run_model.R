@@ -184,7 +184,8 @@ components <- list(
     "scripts/03_outputs/07_country_nowcasts.R",
     "scripts/03_outputs/08_proxy_design.R",
     "scripts/03_outputs/09_forecast_wins.R",
-    "scripts/03_outputs/10_ea_nowcasts.R"
+    "scripts/03_outputs/10_ea_nowcasts.R",
+    "scripts/03_outputs/11_computational_cost.R"
   ),
   
   
@@ -193,6 +194,9 @@ components <- list(
   # --------------------------------------------------------------------------
   
   an_diagnostics = "scripts/04_diagnostics/01_an_diagnostics.R",
+
+  # Generate the computational-cost table from saved timings only.
+  computational_cost = "scripts/03_outputs/11_computational_cost.R",
   
   
   # --------------------------------------------------------------------------
